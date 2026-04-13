@@ -1,9 +1,15 @@
-const axios = require("axios");
+import express from "express";
+import axios from "axios";
+import cors from "cors";
 
-module.exports = async (req, res) => {
-  // Enable CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
+const app = express();
+const PORT = 3000;
 
+// Enable CORS
+app.use(cors());
+
+// Route
+app.get("/api/classify", async (req, res) => {
   try {
     const { name } = req.query;
 
@@ -23,14 +29,14 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Call Genderize API
+    // Call API
     const response = await axios.get(
       `https://api.genderize.io?name=${encodeURIComponent(name)}`
     );
 
     const { gender, probability, count } = response.data;
 
-    // Edge case: No prediction
+    // Edge case
     if (gender === null || count === 0) {
       return res.status(422).json({
         status: "error",
@@ -38,11 +44,10 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Confidence logic
     const is_confident =
       probability >= 0.7 && count >= 100;
 
-    return res.status(200).json({
+    return res.json({
       status: "success",
       data: {
         name,
@@ -56,10 +61,13 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error(error);
-
     return res.status(502).json({
       status: "error",
       message: "Failed to fetch data from external API",
     });
   }
-};
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
