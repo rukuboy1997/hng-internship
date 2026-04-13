@@ -1,0 +1,87 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f4f6;
+  margin: 0;
+}
+
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+}
+
+.badge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.priority {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.tags li {
+  background: #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+
+.buttons button {
+  margin-left: 5px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#edit-btn {
+  background: #3b82f6;
+  color: white;
+}
+
+#delete-btn {
+  background: #ef4444;
+  color: white;
+}
+
+button:focus, input:focus {
+  outline: 2px solid black;
+}
+
+.completed {
+  text-decoration: line-through;
+  color: gray;
+}
