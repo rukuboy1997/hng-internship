@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Advanced Todo Card</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<main class="container">
+
+  <article data-testid="test-todo-card" class="card">
+
+    <!-- PRIORITY INDICATOR -->
+    <div data-testid="test-todo-priority-indicator" id="priority-indicator"></div>
+
+    <!-- VIEW MODE -->
+    <div id="view-mode">
+
+      <h2 data-testid="test-todo-title" id="title"></h2>
+
+      <div data-testid="test-todo-collapsible-section" id="collapsible">
+        <p data-testid="test-todo-description" id="description"></p>
+      </div>
+
+      <button
+        data-testid="test-todo-expand-toggle"
+        id="expand-btn"
+        aria-expanded="false"
+        aria-controls="collapsible"
+      >
+        Expand
+      </button>
+
+      <div class="row">
+        <span data-testid="test-todo-priority" id="priority" class="badge"></span>
+
+        <select
+          data-testid="test-todo-status-control"
+          id="status-control"
+          aria-label="Task status"
+        >
+          <option>Pending</option>
+          <option>In Progress</option>
+          <option>Done</option>
+        </select>
+      </div>
+
+      <time data-testid="test-todo-due-date" id="due-date"></time>
+
+      <time
+        data-testid="test-todo-time-remaining"
+        id="time-remaining"
+        aria-live="polite"
+      ></time>
+
+      <div data-testid="test-todo-overdue-indicator" id="overdue"></div>
+
+      <ul data-testid="test-todo-tags" class="tags">
+        <li data-testid="test-todo-tag-work">work</li>
+        <li data-testid="test-todo-tag-urgent">urgent</li>
+      </ul>
+
+      <div class="actions">
+        <label>
+          <input type="checkbox" data-testid="test-todo-complete-toggle" id="checkbox"/>
+          Mark as Complete
+        </label>
+
+        <div class="buttons">
+          <button data-testid="test-todo-edit-button" id="edit-btn">Edit</button>
+          <button data-testid="test-todo-delete-button" id="delete-btn">Delete</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- EDIT MODE -->
+    <form data-testid="test-todo-edit-form" id="edit-form" hidden>
+
+      <label>
+        Title
+        <input data-testid="test-todo-edit-title-input" id="edit-title" />
+      </label>
+
+      <label>
+        Description
+        <textarea data-testid="test-todo-edit-description-input" id="edit-desc"></textarea>
+      </label>
+
+      <label>
+        Priority
+        <select data-testid="test-todo-edit-priority-select" id="edit-priority">
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+      </label>
+
+      <label>
+        Due Date
+        <input type="datetime-local" data-testid="test-todo-edit-due-date-input" id="edit-date"/>
+      </label>
+
+      <div>
+        <button type="button" data-testid="test-todo-save-button" id="save-btn">Save</button>
+        <button type="button" data-testid="test-todo-cancel-button" id="cancel-btn">Cancel</button>
+      </div>
+
+    </form>
+
+  </article>
+
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

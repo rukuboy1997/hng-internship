@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Profile Card</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<main class="container">
+
+  <article data-testid="test-profile-card" class="card">
+
+    <!-- HEADER -->
+    <header>
+      <h2 data-testid="test-user-name">Mal. Faruk Dakta</h2>
+    </header>
+
+    <!-- AVATAR -->
+    <figure>
+      <img
+        src="https://i.postimg.cc/VsD6J7Hg/rukuboy1997.jpg"
+        alt="Portrait of Mal. Faruk Dakta"
+        data-testid="test-user-avatar"
+      />
+      <figcaption>Software Engineer & AI Enthusiast</figcaption>
+    </figure>
+
+    <!-- BIO -->
+    <p data-testid="test-user-bio">
+      Passionate about building intelligent systems, Web3 solutions, and solving real-world problems with technology.
+    </p>
+
+    <!-- TIME -->
+    <p>
+      Current Time:
+      <span data-testid="test-user-time" id="time"></span>
+    </p>
+
+    <!-- SOCIAL LINKS -->
+    <nav data-testid="test-user-social-links">
+      <ul>
+        <li>
+          <a
+            href="https://twitter.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="test-user-social-twitter"
+          >
+            Twitter
+          </a>
+        </li>
+        <li>
+          <a
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="test-user-social-github"
+          >
+            GitHub
+          </a>
+        </li>
+        <li>
+          <a
+            href="https://linkedin.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="test-user-social-linkedin"
+          >
+            LinkedIn
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- HOBBIES -->
+    <section>
+      <h3>Hobbies</h3>
+      <ul data-testid="test-user-hobbies">
+        <li>Coding</li>
+        <li>Reading</li>
+        <li>Building AI Projects</li>
+      </ul>
+    </section>
+
+    <!-- DISLIKES -->
+    <section>
+      <h3>Dislikes</h3>
+      <ul data-testid="test-user-dislikes">
+        <li>Poor UI/UX</li>
+        <li>Unoptimized code</li>
+        <li>Procrastination</li>
+      </ul>
+    </section>
+
+  </article>
+
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>
