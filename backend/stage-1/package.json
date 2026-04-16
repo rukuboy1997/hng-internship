@@ -1,0 +1,17 @@
+{
+  "name": "gender-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.37.0",
+    "axios": "^1.15.0",
+    "cors": "^2.8.5",
+    "express": "^5.0.1",
+    "uuid": "^13.0.0"
+  }
+}
