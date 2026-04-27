@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Insighta Labs+</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen" class="screen">
+  <div class="login-card">
+    <div class="logo">
+      <span class="logo-icon">🔬</span>
+      <h1>Insighta Labs<span class="plus">+</span></h1>
+    </div>
+    <p class="tagline">Demographic Profile Intelligence</p>
+    <button id="login-btn" class="btn-github">
+      <svg height="20" viewBox="0 0 16 16" width="20" fill="currentColor">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+          0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+          -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+          .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+          -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+          1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82
+          1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01
+          1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      Sign in with GitHub
+    </button>
+    <p id="login-error" class="error hidden"></p>
+  </div>
+</div>
+
+<!-- Dashboard Screen -->
+<div id="dashboard-screen" class="screen hidden">
+  <nav class="navbar">
+    <div class="nav-brand">🔬 Insighta Labs<span class="plus">+</span></div>
+    <div class="nav-user">
+      <span id="nav-username"></span>
+      <span id="nav-role" class="badge"></span>
+      <button id="logout-btn" class="btn-sm">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <!-- Search -->
+    <div class="card">
+      <h2>Natural Language Search</h2>
+      <div class="search-row">
+        <input id="nl-input" type="text" placeholder='Try "young males from Nigeria" or "adults over 30 from Ghana"' />
+        <button id="nl-btn" class="btn-primary">Search</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card">
+      <h2>Filter & Browse</h2>
+      <div class="filters">
+        <select id="f-gender">
+          <option value="">All Genders</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+        <select id="f-age-group">
+          <option value="">All Age Groups</option>
+          <option value="child">Child</option>
+          <option value="teenager">Teenager</option>
+          <option value="adult">Adult</option>
+          <option value="senior">Senior</option>
+        </select>
+        <input id="f-country" type="text" placeholder="Country code (e.g. NG)" maxlength="2" style="width:140px" />
+        <input id="f-min-age" type="number" placeholder="Min age" min="0" style="width:100px" />
+        <input id="f-max-age" type="number" placeholder="Max age" min="0" style="width:100px" />
+        <select id="f-sort">
+          <option value="created_at">Sort: Date</option>
+          <option value="age">Sort: Age</option>
+          <option value="gender_probability">Sort: Gender Prob.</option>
+        </select>
+        <select id="f-order">
+          <option value="asc">Asc</option>
+          <option value="desc">Desc</option>
+        </select>
+        <button id="filter-btn" class="btn-primary">Apply</button>
+        <button id="reset-btn" class="btn-secondary">Reset</button>
+        <button id="export-btn" class="btn-export">⬇ Export CSV</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card">
+      <div class="results-header">
+        <span id="results-info">Loading...</span>
+        <div class="pagination">
+          <button id="prev-btn" class="btn-sm" disabled>‹ Prev</button>
+          <span id="page-info"></span>
+          <button id="next-btn" class="btn-sm" disabled>Next ›</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="profiles-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Gender</th>
+              <th>Age</th>
+              <th>Age Group</th>
+              <th>Country</th>
+              <th>Gender Prob.</th>
+              <th>Country Prob.</th>
+            </tr>
+          </thead>
+          <tbody id="profiles-body">
+            <tr><td colspan="7" class="loading">Loading profiles...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

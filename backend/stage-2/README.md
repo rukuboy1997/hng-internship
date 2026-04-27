@@ -1,178 +1,143 @@
-# Insighta Labs — Intelligence Query Engine
+# Insighta Labs+ — Backend API
 
-A demographic intelligence API built with Node.js + Express. Supports advanced filtering, sorting, pagination, and natural language search.
-
----
-
-## Project Structure
+## System Architecture
 
 ```
-├── index.js          # Express app entry point
-├── db.js             # PostgreSQL connection pool
-├── routes/
-│   └── profiles.js   # All /api/profiles endpoints
-├── scripts/
-│   └── seed.js       # Database seed script
-├── api/
-│   └── index.js      # Vercel serverless entry point
-├── vercel.json       # Vercel deployment config
-├── .env.example      # Example environment variables
-└── package.json
+┌─────────────────────────────────────────────────────┐
+│  Clients                                             │
+│  ┌──────────────┐  ┌──────────────┐                 │
+│  │  Web Portal  │  │  CLI Tool    │                 │
+│  │ (HTTP cookie)│  │(Bearer token)│                 │
+│  └──────┬───────┘  └──────┬───────┘                 │
+│         └────────┬─────────┘                         │
+└──────────────────┼──────────────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│  Express API (Vercel Serverless)                     │
+│                                                      │
+│  /api/profiles          ← Stage 2 (public)          │
+│  /api/v2/auth/*         ← OAuth + tokens            │
+│  /api/v2/profiles/*     ← Protected (JWT)           │
+│                                                      │
+│  Middleware: CORS → cookies → rate-limit →          │
+│  authenticate → authorize → CSRF → logger → route   │
+└─────────────────────────────────────────────────────┘
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│  Neon PostgreSQL                                     │
+│  profiles · users · refresh_tokens                  │
+│  oauth_states · auth_codes · request_logs           │
+└─────────────────────────────────────────────────────┘
 ```
 
----
+## Authentication Flow
 
-## Setup
+### CLI (PKCE)
+1. CLI generates `code_verifier` (32 random bytes, base64url) and `code_challenge` (SHA-256 of verifier, base64url)
+2. CLI starts a local HTTP server on `127.0.0.1:PORT`
+3. CLI calls `GET /api/v2/auth/github/login?code_challenge=...&code_challenge_method=S256&redirect_uri=http://127.0.0.1:PORT/callback&client_type=cli`
+4. Backend stores state+challenge in DB, redirects browser to GitHub OAuth
+5. GitHub redirects to `/api/v2/auth/github/callback`
+6. Backend exchanges GitHub code for user info, upserts user, generates a short-lived `auth_code` (5 min), redirects to CLI callback URL
+7. CLI receives `auth_code`, calls `POST /api/v2/auth/token` with `{auth_code, code_verifier}`
+8. Backend verifies PKCE (`SHA256(code_verifier) == code_challenge`), issues JWT access token (15 min) + opaque refresh token (7 days)
+9. CLI stores tokens at `~/.insighta/credentials.json`
 
-**1. Install dependencies**
+### Web Portal (HTTP-only cookies)
+1. Portal navigates to `GET /api/v2/auth/github/login?client_type=web&redirect_uri=PORTAL_URL`
+2. Same GitHub OAuth flow as above
+3. Backend sets `access_token` and `refresh_token` as HTTP-only, SameSite=None, Secure cookies
+4. CSRF token embedded in JWT payload, returned via `GET /api/v2/auth/me` response body
+5. Portal sends `X-CSRF-Token` header on all state-mutating requests
+
+## CLI Usage
+
 ```bash
-npm install
+npm install -g insighta-cli
+
+insighta login                           # GitHub OAuth (opens browser)
+insighta whoami                          # Show current user
+insighta profiles --gender male --country NG --page 1
+insighta profiles --age-group adult --min-age 25 --max-age 45
+insighta search "young females from Ghana"
+insighta export --country NG --output nigeria.csv
+insighta logout
 ```
 
-**2. Set up environment variables**
+## Token Handling
 
-Copy `.env.example` to `.env` and fill in your database URL:
-```bash
-cp .env.example .env
-```
+| Token         | Type   | Storage                 | Expiry | Rotation        |
+|---------------|--------|-------------------------|--------|-----------------|
+| Access token  | JWT    | CLI: file / Web: cookie | 15 min | On each refresh |
+| Refresh token | Opaque | CLI: file / Web: cookie | 7 days | On each use     |
 
-```env
-DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
-PORT=3000
-```
+- Refresh tokens are **single-use** (rotated on every refresh)
+- Refresh token is SHA-256 hashed before DB storage
+- Revoked tokens tracked via `revoked_at` timestamp
 
-**3. Seed the database**
-```bash
-npm run seed
-```
+## Role Enforcement
 
-**4. Start the server**
-```bash
-npm start
-# or for development with auto-reload:
-npm run dev
-```
+Roles: `admin` | `analyst`
 
----
+- **First GitHub login** → role `admin`
+- **All subsequent logins** → role `analyst` (admin can promote via `PATCH /api/v2/auth/users/:id/role`)
+- All `/api/v2/profiles/*` endpoints require authentication (both roles)
+- User management (`GET /api/v2/auth/users`, `PATCH /api/v2/auth/users/:id/role`) requires `admin`
 
-## Deploying to Vercel
+## Natural Language Parsing Approach
 
-1. Push this folder to a GitHub repo
-2. Import it on [vercel.com](https://vercel.com) (use the repo root as the project root)
-3. Add the `DATABASE_URL` environment variable in Project Settings → Environment Variables
-4. Deploy
+The parser is rule-based and operates in this order:
 
-> No special build step needed — Vercel detects `api/index.js` and runs it as a serverless function automatically.
+1. **Gender** — regex for `male/males/men/man/boys` → male; `female/females/women/woman/girls` → female. "male and female" / "both" clears the filter.
+2. **Age group** — `children/child/kids` → child · `teenagers/teens` → teenager · `adults` → adult · `seniors/elderly/old people` → senior
+3. **"Young" shortcut** — maps to ages 16–24 when no age group matched
+4. **Numeric age constraints** — `above/over/older than N` → min_age · `below/under/younger than N` → max_age · `between X and Y` → range · `aged N` → exact
+5. **Country lookup** — ~55 country names sorted longest-first to avoid partial matches (e.g. "guinea-bissau" before "guinea"). Returns ISO 3166-1 alpha-2 code.
 
----
+**Limitations:** no compound "or" queries · no probability NL constraints · multi-country not supported
 
-## Endpoints
+## API Versioning
 
-### `GET /api/profiles`
+| Endpoint                              | Auth    | Notes                    |
+|---------------------------------------|---------|--------------------------|
+| `GET /api/profiles`                   | Public  | Stage 2 preserved        |
+| `GET /api/profiles/search`            | Public  | Stage 2 preserved        |
+| `GET /api/v2/profiles`                | Auth    | Updated pagination shape |
+| `GET /api/v2/profiles/search`         | Auth    | Updated pagination shape |
+| `GET /api/v2/profiles/export`         | Auth    | CSV download             |
+| `GET /api/v2/auth/github/login`       | Public  | Start OAuth              |
+| `GET /api/v2/auth/github/callback`    | Public  | OAuth callback           |
+| `POST /api/v2/auth/token`             | Public  | PKCE token exchange      |
+| `POST /api/v2/auth/refresh`           | Public  | Refresh tokens           |
+| `POST /api/v2/auth/logout`            | Public  | Revoke session           |
+| `GET /api/v2/auth/me`                 | Auth    | Current user + CSRF      |
+| `GET /api/v2/auth/users`             | Admin   | List all users           |
+| `PATCH /api/v2/auth/users/:id/role`  | Admin   | Change user role         |
 
-Filter, sort, and paginate profiles.
-
-**Filters:**
-
-| Parameter                 | Type   | Description                              |
-|--------------------------|--------|------------------------------------------|
-| `gender`                 | string | `male` or `female`                       |
-| `age_group`              | string | `child`, `teenager`, `adult`, `senior`   |
-| `country_id`             | string | ISO 2-letter code e.g. `NG`, `KE`        |
-| `min_age`                | int    | Minimum age (inclusive)                  |
-| `max_age`                | int    | Maximum age (inclusive)                  |
-| `min_gender_probability` | float  | Minimum gender confidence score          |
-| `min_country_probability`| float  | Minimum country confidence score         |
-
-**Sorting:** `sort_by` = `age` | `created_at` | `gender_probability`, `order` = `asc` | `desc`
-
-**Pagination:** `page` (default: 1), `limit` (default: 10, max: 50)
-
-**Example:**
-```
-GET /api/profiles?gender=male&country_id=NG&min_age=25&sort_by=age&order=desc&page=1&limit=10
-```
-
----
-
-### `GET /api/profiles/search`
-
-Natural language query — rule-based, no AI.
-
-| Parameter | Description                        |
-|----------|------------------------------------|
-| `q`      | Query string (required)            |
-| `page`   | Page number (default: 1)           |
-| `limit`  | Results per page (default: 10, max: 50) |
-
-**Example:**
-```
-GET /api/profiles/search?q=young males from nigeria
-GET /api/profiles/search?q=adult females from kenya above 30
-```
-
----
-
-## Natural Language Parsing
-
-Pure rule-based parsing — no AI or LLMs used.
-
-**Supported keywords:**
-
-| Keyword / Pattern                              | Filter applied                          |
-|-----------------------------------------------|-----------------------------------------|
-| `male`, `males`, `men`, `man`, `boys`         | `gender=male`                           |
-| `female`, `females`, `women`, `woman`, `girls`| `gender=female`                         |
-| `male and female`, `both`                     | no gender filter                        |
-| `child`, `children`, `kids`                   | `age_group=child`                       |
-| `teenager`, `teenagers`, `teen`               | `age_group=teenager`                    |
-| `adult`, `adults`                             | `age_group=adult`                       |
-| `senior`, `seniors`, `elderly`                | `age_group=senior`                      |
-| `young`                                       | `min_age=16`, `max_age=24`              |
-| `above 30`, `over 30`, `older than 30`        | `min_age=30`                            |
-| `below 25`, `under 25`, `younger than 25`     | `max_age=25`                            |
-| `between 20 and 35`                           | `min_age=20`, `max_age=35`              |
-| `aged 40`                                     | `min_age=40`, `max_age=40`              |
-| Country names (e.g. `nigeria`, `south africa`)| `country_id=NG`, `country_id=ZA`, etc. |
-
-**Example mappings:**
-
-| Query                                 | Result                                              |
-|--------------------------------------|-----------------------------------------------------|
-| `young males`                        | `gender=male`, `min_age=16`, `max_age=24`           |
-| `females above 30`                   | `gender=female`, `min_age=30`                       |
-| `people from angola`                 | `country_id=AO`                                     |
-| `adult males from kenya`             | `gender=male`, `age_group=adult`, `country_id=KE`   |
-| `male and female teenagers above 17` | `age_group=teenager`, `min_age=17`                  |
-
-Unrecognized queries return:
-```json
-{ "status": "error", "message": "Unable to interpret query" }
-```
-
----
-
-## Limitations
-
-- No synonym expansion — words like `youth`, `elders`, `infant` are not recognized
-- No OR logic — all conditions are ANDed; can't query "Nigerians or Kenyans"
-- Country ISO codes not accepted as input — use full names like `nigeria`, not `NG`
-- No fuzzy matching — typos like `nigera` won't match
-- No negation support — `not from kenya` is not handled
-- Only English queries are supported
-- `young` and `above X` can coexist — `above X` takes precedence for `min_age`
-
----
-
-## Error Responses
+## v2 Pagination Shape
 
 ```json
-{ "status": "error", "message": "<description>" }
+{
+  "status": "success",
+  "data": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 2026,
+    "total_pages": 203,
+    "has_next": true,
+    "has_prev": false
+  }
+}
 ```
 
-| Code | Meaning                              |
-|------|--------------------------------------|
-| 400  | Missing or empty required parameter  |
-| 404  | Not found                            |
-| 422  | Invalid parameter value or type      |
-| 500  | Server error                         |
+## Environment Variables
+
+| Variable               | Required | Description                               |
+|------------------------|----------|-------------------------------------------|
+| `DATABASE_URL`         | Yes      | Neon PostgreSQL connection string         |
+| `JWT_SECRET`           | Yes      | Secret for signing JWT tokens             |
+| `GITHUB_CLIENT_ID`     | Yes      | GitHub OAuth App client ID                |
+| `GITHUB_CLIENT_SECRET` | Yes      | GitHub OAuth App client secret            |
+| `BACKEND_URL`          | Yes      | Deployed backend URL (for OAuth callback) |
+| `PORTAL_URL`           | No       | Portal origin for CORS + cookie redirect  |

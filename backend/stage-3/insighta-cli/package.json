@@ -1,0 +1,21 @@
+{
+  "name": "insighta-cli",
+  "version": "1.0.0",
+  "description": "Insighta Labs+ CLI — query the demographic profile intelligence system",
+  "main": "bin/insighta.js",
+  "bin": {
+    "insighta": "./bin/insighta.js"
+  },
+  "scripts": {
+    "start": "node bin/insighta.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "open": "^10.1.0"
+  },
+  "keywords": ["insighta", "cli", "demographics", "profiles"],
+  "license": "MIT"
+}
