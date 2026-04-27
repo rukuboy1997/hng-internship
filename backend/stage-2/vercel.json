@@ -1,22 +1,6 @@
 {
   "version": 2,
-<<<<<<< HEAD
-<<<<<<< HEAD
   "builds": [
-=======
-  "buildCommand": "npm install",
-  "outputDirectory": ".",
-  "framework": null,
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
->>>>>>> a1df99bf2b131942bd4caea9766bb2a1a49e1c8e
-=======
-  "builds": [
->>>>>>> a3df0bba3790279d1723400364bb72330f34f66c
     {
       "src": "api/index.js",
       "use": "@vercel/node"
