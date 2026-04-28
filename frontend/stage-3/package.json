@@ -1,12 +1,12 @@
 {
-  "name": "@workspace/habit-tracker",
+  "name": "habit-tracker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -H 0.0.0.0",
+    "start": "next start",
     "test:unit": "vitest run --coverage",
     "test:integration": "vitest run",
     "test:e2e": "playwright test",
@@ -15,19 +15,19 @@
   },
   "dependencies": {
     "next": "^15.1.0",
-    "react": "catalog:",
-    "react-dom": "catalog:"
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@testing-library/dom": "^10.4.1",
+    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
     "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",
