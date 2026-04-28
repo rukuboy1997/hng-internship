@@ -19,4 +19,13 @@ const authenticatedLimiter = rateLimit({
   message: { status: "error", message: "Too many requests, please try again later." },
 });
 
-module.exports = { publicLimiter, authenticatedLimiter };
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || "unknown",
+  message: { status: "error", message: "Too many requests, please try again later." },
+});
+
+module.exports = { publicLimiter, authenticatedLimiter, authLimiter };
