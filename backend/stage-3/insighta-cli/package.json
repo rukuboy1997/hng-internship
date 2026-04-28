@@ -1,13 +1,18 @@
 {
-  "name": "insighta-cli",
+  "name": "insighta-labs-cli",
   "version": "1.0.0",
   "description": "Insighta Labs+ CLI — query the demographic profile intelligence system",
   "main": "bin/insighta.js",
   "bin": {
-    "insighta": "./bin/insighta.js"
+    "insighta": "bin/insighta.js"
   },
+  "files": [
+    "bin",
+    "README.md"
+  ],
   "scripts": {
-    "start": "node bin/insighta.js"
+    "start": "node bin/insighta.js",
+    "prepare": "chmod +x bin/insighta.js"
   },
   "engines": {
     "node": ">=18"

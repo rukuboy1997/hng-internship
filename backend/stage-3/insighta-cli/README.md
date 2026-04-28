@@ -5,7 +5,7 @@ Globally installable CLI for Insighta Labs+ demographic profile intelligence.
 ## Install
 
 ```bash
-npm install -g insighta-cli
+npm install -g insighta-labs-cli
 ```
 
 ## Commands
