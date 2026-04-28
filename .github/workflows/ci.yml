@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/stage-2/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend/stage-2
+      - name: Check syntax
+        run: node --check index.js routes/auth.js routes/profiles.js routes/v2/profiles.js
+        working-directory: backend/stage-2
+      - name: Run tests
+        run: npm test --if-present
+        working-directory: backend/stage-2
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
