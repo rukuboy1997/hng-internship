@@ -53,12 +53,19 @@ async function runMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS auth_rate_limits (
+      id BIGSERIAL PRIMARY KEY,
+      ip TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
     CREATE INDEX IF NOT EXISTS idx_auth_codes_expires ON auth_codes(expires_at);
     CREATE INDEX IF NOT EXISTS idx_request_logs_user ON request_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_ip_time ON auth_rate_limits(ip, created_at);
   `);
 }
 
