@@ -55,8 +55,7 @@ function cookieOpts(maxAge, httpOnly = true) {
   };
 }
 
-// GET /api/v2/auth/github/login
-router.get("/github/login", async (req, res) => {
+async function githubLoginHandler(req, res) {
   const { code_challenge, code_challenge_method = "S256", redirect_uri, client_type = "web" } = req.query;
 
   if (!process.env.GITHUB_CLIENT_ID) {
@@ -85,10 +84,9 @@ router.get("/github/login", async (req, res) => {
     console.error(err);
     return res.status(500).json({ status: "error", message: "Server error" });
   }
-});
+}
 
-// GET /api/v2/auth/github/callback
-router.get("/github/callback", async (req, res) => {
+async function githubCallbackHandler(req, res) {
   const { code, state, error } = req.query;
 
   if (error) {
@@ -152,7 +150,6 @@ router.get("/github/callback", async (req, res) => {
     );
     const user = userRes.rows[0];
 
-    // CLI flow
     if (sd.client_type === "cli" && sd.redirect_uri) {
       const authCode = crypto.randomBytes(32).toString("hex");
       const expires = new Date(Date.now() + AUTH_CODE_MINUTES * 60000);
@@ -166,7 +163,6 @@ router.get("/github/callback", async (req, res) => {
       return res.redirect(cbUrl.toString());
     }
 
-    // Web flow — set HTTP-only cookies
     const { token: accessToken, csrf } = makeAccessToken(user);
     const refreshToken = await makeRefreshToken(user.id);
 
@@ -180,9 +176,34 @@ router.get("/github/callback", async (req, res) => {
     console.error(err);
     return res.status(500).json({ status: "error", message: "Server error" });
   }
-});
+}
 
-// POST /api/v2/auth/token  — CLI exchanges auth_code for tokens
+async function meHandler(req, res) {
+  try {
+    const ur = await pool.query(
+      `SELECT id, username, email, avatar_url, role,
+              to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+       FROM users WHERE id = $1`,
+      [req.user.sub]
+    );
+    if (!ur.rows.length) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+    return res.json({ status: "success", data: { ...ur.rows[0], csrf_token: req.user.csrf } });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+}
+
+// GET /github  (short alias) and /github/login (legacy)
+router.get("/github", githubLoginHandler);
+router.get("/github/login", githubLoginHandler);
+
+// GET /github/callback
+router.get("/github/callback", githubCallbackHandler);
+
+// POST /token  — CLI exchanges auth_code for tokens
 router.post("/token", async (req, res) => {
   const { auth_code, code_verifier } = req.body;
   if (!auth_code || !code_verifier) {
@@ -228,7 +249,7 @@ router.post("/token", async (req, res) => {
   }
 });
 
-// POST /api/v2/auth/refresh
+// POST /refresh
 router.post("/refresh", async (req, res) => {
   const token = (req.cookies && req.cookies.refresh_token) || req.body?.refresh_token;
   if (!token) {
@@ -272,7 +293,7 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// POST /api/v2/auth/logout
+// POST /logout
 router.post("/logout", async (req, res) => {
   const token = (req.cookies && req.cookies.refresh_token) || req.body?.refresh_token;
   if (token) {
@@ -287,24 +308,8 @@ router.post("/logout", async (req, res) => {
   return res.json({ status: "success", message: "Logged out" });
 });
 
-// GET /api/v2/auth/me
-router.get("/me", authenticate, async (req, res) => {
-  try {
-    const ur = await pool.query(
-      `SELECT id, username, email, avatar_url, role,
-              to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
-       FROM users WHERE id = $1`,
-      [req.user.sub]
-    );
-    if (!ur.rows.length) {
-      return res.status(404).json({ status: "error", message: "User not found" });
-    }
-    return res.json({ status: "success", data: { ...ur.rows[0], csrf_token: req.user.csrf } });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ status: "error", message: "Server error" });
-  }
-});
+// GET /me  — current user
+router.get("/me", authenticate, meHandler);
 
 // GET /api/v2/auth/users  — admin only
 router.get("/users", authenticate, require("../middleware/authorize")("admin"), async (req, res) => {
@@ -342,7 +347,7 @@ router.get("/users", authenticate, require("../middleware/authorize")("admin"), 
   }
 });
 
-// PATCH /api/v2/auth/users/:id/role  — admin only
+// PATCH /users/:id/role  — admin only
 router.patch("/users/:id/role", authenticate, require("../middleware/authorize")("admin"), async (req, res) => {
   const { role } = req.body;
   if (!["admin", "analyst"].includes(role)) {
@@ -363,4 +368,4 @@ router.patch("/users/:id/role", authenticate, require("../middleware/authorize")
   }
 });
 
-module.exports = router;
+module.exports = { router, meHandler };
