@@ -53,7 +53,7 @@
 ## CLI Usage
 
 ```bash
-npm install -g insighta-cli
+npm install -g insighta-labs-cli
 
 insighta login                           # GitHub OAuth (opens browser)
 insighta whoami                          # Show current user
