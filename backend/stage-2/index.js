@@ -1,20 +1,18 @@
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const profilesRouter = require("./routes/profiles");
-const authRouter = require("./routes/auth");
+const { router: authRouter, meHandler } = require("./routes/auth");
 const v2ProfilesRouter = require("./routes/v2/profiles");
 const authenticate = require("./middleware/authenticate");
 const csrf = require("./middleware/csrf");
 const requestLogger = require("./middleware/requestLogger");
-const { publicLimiter, authenticatedLimiter } = require("./middleware/rateLimiter");
+const { publicLimiter, authenticatedLimiter, authLimiter } = require("./middleware/rateLimiter");
 const { ensureMigrated } = require("./migrations");
 
 const app = express();
 
-// Run DB migrations on startup (idempotent)
 ensureMigrated().catch((err) => console.error("Migration error:", err.message));
 
-// CORS — allow portal with credentials, all others get wildcard
 const PORTAL_ORIGINS = [
   process.env.PORTAL_URL,
   "http://localhost:3001",
@@ -39,20 +37,28 @@ app.set("trust proxy", 1);
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Request logging (after auth middleware on v2 routes so user_id is captured)
 app.use(requestLogger);
 
-// Rate limiting
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Apply strict auth rate limiter to both /auth/github paths
+app.use("/auth/github", authLimiter);
+app.use("/api/v2/auth/github", authLimiter);
+// General public limiter on all v2 routes
 app.use("/api/v2", publicLimiter);
 
-// v1 routes — public (Stage 2 preserved)
-app.use("/api/profiles", profilesRouter);
-
-// Auth routes
+// ── Auth routes (mounted at short path AND versioned path) ──────────────────
+app.use("/auth", authRouter);
 app.use("/api/v2/auth", authRouter);
 
-// v2 profile routes — require authentication
+// ── /api/users/me  (short alias for current user) ──────────────────────────
+app.get("/api/users/me", authenticate, meHandler);
+app.get("/api/v2/users/me", authenticate, meHandler);
+
+// ── Profiles — require authentication on all methods ───────────────────────
+app.use("/api/profiles", authenticate);
+app.use("/api/profiles", profilesRouter);
+
+// ── V2 profiles — require auth + CSRF ──────────────────────────────────────
 app.use(
   "/api/v2/profiles",
   authenticate,
@@ -61,10 +67,11 @@ app.use(
   v2ProfilesRouter
 );
 
-// Health check
+// ── Health check ────────────────────────────────────────────────────────────
 app.get("/api/healthz", (req, res) => res.json({ status: "ok", version: "2.0.0" }));
 app.get("/api/v2/healthz", (req, res) => res.json({ status: "ok", version: "2.0.0" }));
 
+// ── 404 / error handlers ────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ status: "error", message: "Not found" }));
 app.use((err, req, res, _next) => {
   console.error(err);
