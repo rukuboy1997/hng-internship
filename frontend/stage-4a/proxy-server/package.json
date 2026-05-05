@@ -1,0 +1,9 @@
+{
+  "name": "ai-summarizer-proxy",
+  "version": "1.0.0",
+  "description": "Vercel proxy server for AI Page Summarizer Chrome Extension",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}

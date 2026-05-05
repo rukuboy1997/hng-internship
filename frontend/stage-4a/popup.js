@@ -13,7 +13,6 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   pageTitle:       $("pageTitle"),
   pageFavicon:     $("pageFavicon"),
-  noKeyNotice:     $("noKeyNotice"),
   cachedNotice:    $("cachedNotice"),
   mainActions:     $("mainActions"),
   optionsBar:      $("optionsBar"),
@@ -33,7 +32,6 @@ const ui = {
   resummarizeBtn:  $("resummarizeBtn"),
   refreshBtn:      $("refreshBtn"),
   settingsBtn:     $("settingsBtn"),
-  goToSettingsBtn: $("goToSettingsBtn"),
   themeBtn:        $("themeBtn"),
   bulletCount:     $("bulletCount"),
   sunIcon:         document.querySelector(".sun-icon"),
@@ -50,7 +48,6 @@ let lastExtractedContent = null;
 document.addEventListener("DOMContentLoaded", async () => {
   await initTheme();
   await loadCurrentTab();
-  await checkApiKey();
   await checkCache();
   bindEvents();
 });
@@ -84,7 +81,6 @@ async function loadCurrentTab() {
   const title = currentTab?.title || "Unknown page";
   ui.pageTitle.textContent = title.length > 60 ? title.slice(0, 60) + "…" : title;
 
-  // Favicon
   if (currentTab?.favIconUrl) {
     const img = document.createElement("img");
     img.src = currentTab.favIconUrl;
@@ -101,16 +97,6 @@ function defaultFaviconSVG() {
     <circle cx="12" cy="12" r="10" stroke="#94a3b8" stroke-width="2"/>
     <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke="#94a3b8" stroke-width="2"/>
   </svg>`;
-}
-
-// ─── API Key Check ────────────────────────────────────────────────────────────
-
-async function checkApiKey() {
-  const { apiKey } = await chrome.storage.sync.get("apiKey");
-  if (!apiKey) {
-    ui.noKeyNotice.style.display = "flex";
-    ui.summarizeBtn.disabled = true;
-  }
 }
 
 // ─── Cache Check ─────────────────────────────────────────────────────────────
@@ -139,7 +125,6 @@ function bindEvents() {
   ui.copyBtn.addEventListener("click", copySummary);
   ui.themeBtn.addEventListener("click", toggleTheme);
   ui.settingsBtn.addEventListener("click", openSettings);
-  ui.goToSettingsBtn?.addEventListener("click", openSettings);
 }
 
 function openSettings() {
@@ -151,7 +136,6 @@ function openSettings() {
 async function runSummarize(forceRefresh = false) {
   if (!currentTab) return;
 
-  // Clear cache if forcing refresh
   if (forceRefresh) {
     await chrome.runtime.sendMessage({
       type: "CLEAR_CACHE_FOR_URL",
@@ -161,7 +145,6 @@ async function runSummarize(forceRefresh = false) {
 
   showLoading("Extracting page content…");
 
-  // Step 1: Extract content via content script
   let extracted;
   try {
     extracted = await extractContent();
@@ -173,7 +156,6 @@ async function runSummarize(forceRefresh = false) {
 
   setLoadingText("Sending to AI…");
 
-  // Step 2: Request summary from background service worker
   const bulletCount = parseInt(ui.bulletCount.value, 10) || 5;
 
   let summaryResponse;
@@ -216,7 +198,6 @@ async function extractContent() {
       { type: "EXTRACT_CONTENT" },
       (response) => {
         if (chrome.runtime.lastError) {
-          // Content script may not be injected yet — try scripting API
           chrome.scripting.executeScript(
             {
               target: { tabId: currentTab.id },
@@ -227,7 +208,6 @@ async function extractContent() {
                 reject(new Error("Cannot access this page. Extensions are restricted on browser pages."));
                 return;
               }
-              // Retry after injection
               setTimeout(() => {
                 chrome.tabs.sendMessage(
                   currentTab.id,
@@ -261,11 +241,9 @@ async function extractContent() {
 function renderSummary(data, fromCache) {
   const { bullets, insights, wordCount, readingTimeMinutes } = data;
 
-  // Update meta
   ui.readingTime.textContent = `${readingTimeMinutes} min read`;
   ui.wordCount.textContent = `${wordCount?.toLocaleString() || "—"} words`;
 
-  // Bullets
   ui.bulletList.innerHTML = "";
   (bullets || []).forEach((text) => {
     const li = document.createElement("li");
@@ -273,7 +251,6 @@ function renderSummary(data, fromCache) {
     ui.bulletList.appendChild(li);
   });
 
-  // Insights
   ui.insightList.innerHTML = "";
   (insights || []).forEach((text) => {
     const li = document.createElement("li");
@@ -281,7 +258,6 @@ function renderSummary(data, fromCache) {
     ui.insightList.appendChild(li);
   });
 
-  // Cached notice
   ui.cachedNotice.style.display = fromCache ? "flex" : "none";
 
   showView("summary");
@@ -380,7 +356,6 @@ async function copySummary() {
         Copy`;
     }, 1800);
   } catch {
-    // Clipboard may be blocked on some pages
     ui.copyBtn.textContent = "Failed";
     setTimeout(() => { ui.copyBtn.textContent = "Copy"; }, 1500);
   }
@@ -388,19 +363,13 @@ async function copySummary() {
 
 // ─── Security Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Sanitize AI-returned text before setting it as textContent.
- * textContent is inherently safe (no HTML parsing), but we still clean up
- * any stray control characters or abnormal whitespace.
- */
 function sanitizeForDisplay(text) {
   if (typeof text !== "string") return "";
   return text
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") // strip control chars
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
     .trim();
 }
 
 // ─── Initial View ─────────────────────────────────────────────────────────────
 
-// Show idle by default (checkCache may override to summary)
 showView("idle");

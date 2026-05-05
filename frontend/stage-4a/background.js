@@ -3,8 +3,7 @@
  *
  * Responsibilities:
  *  - Receive SUMMARIZE_PAGE requests from popup
- *  - Retrieve user settings (API key, provider) from chrome.storage
- *  - Call the AI provider API securely (key never leaves this worker)
+ *  - Forward to the secure proxy server (API key is never in the extension)
  *  - Cache summaries per URL in chrome.storage.local
  *  - Return structured summary (bullets + insights + meta) to popup
  *  - Handle errors and rate limiting gracefully
@@ -12,7 +11,14 @@
 
 "use strict";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Configuration ────────────────────────────────────────────────────────────
+
+/**
+ * URL of the deployed Vercel proxy server.
+ * After deploying proxy-server/ to Vercel, paste your deployment URL here:
+ * e.g.  https://ai-summarizer-proxy.vercel.app/api/summarize
+ */
+const PROXY_URL = "https://ai-page-summarizer-proxy.vercel.app/api/summarize";
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES = 1;
@@ -24,7 +30,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleSummarize(message.payload)
       .then((result) => sendResponse({ success: true, data: result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.type === "CLEAR_CACHE_FOR_URL") {
@@ -53,16 +59,10 @@ async function handleSummarize(payload) {
     return { ...cached, fromCache: true };
   }
 
-  // 2. Load settings
-  const settings = await getSettings();
-  if (!settings.apiKey) {
-    throw new Error("No API key configured. Open the extension settings to add your API key.");
-  }
+  // 2. Call proxy with retry
+  const summary = await callProxyWithRetry(title, bodyText, bulletCount, MAX_RETRIES);
 
-  // 3. Call AI provider
-  const summary = await callAIWithRetry(settings, title, bodyText, bulletCount, MAX_RETRIES);
-
-  // 4. Attach meta
+  // 3. Attach meta
   const result = {
     ...summary,
     wordCount,
@@ -74,174 +74,48 @@ async function handleSummarize(payload) {
     fromCache: false,
   };
 
-  // 5. Store in cache
+  // 4. Store in cache
   await setCachedSummary(url, result);
 
   return result;
 }
 
-// ─── AI Provider Dispatch ─────────────────────────────────────────────────────
+// ─── Proxy Call ───────────────────────────────────────────────────────────────
 
-async function callAIWithRetry(settings, title, bodyText, bulletCount, retries) {
+async function callProxyWithRetry(title, bodyText, bulletCount, retries) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await callAI(settings, title, bodyText, bulletCount);
+      return await callProxy(title, bodyText, bulletCount);
     } catch (err) {
       if (attempt === retries) throw err;
-      // Back-off briefly before retry
       await sleep(800 * (attempt + 1));
     }
   }
 }
 
-async function callAI(settings, title, bodyText, bulletCount) {
-  const { provider, apiKey, model } = settings;
-
-  if (provider === "openai") {
-    return callOpenAI(apiKey, model || "gpt-4o-mini", title, bodyText, bulletCount);
-  } else if (provider === "gemini") {
-    return callGemini(apiKey, model || "gemini-1.5-flash", title, bodyText, bulletCount);
-  } else {
-    throw new Error(`Unknown provider: "${provider}". Please check your settings.`);
-  }
-}
-
-// ─── OpenAI Integration ───────────────────────────────────────────────────────
-
-async function callOpenAI(apiKey, model, title, bodyText, bulletCount) {
-  const prompt = buildPrompt(title, bodyText, bulletCount);
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a precise content summarizer. Always respond with valid JSON only. No markdown fences.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 800,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    const msg = errorBody?.error?.message || `OpenAI error ${response.status}`;
-    if (response.status === 401) throw new Error("Invalid OpenAI API key. Check your settings.");
-    if (response.status === 429) throw new Error("OpenAI rate limit reached. Please wait a moment.");
-    if (response.status === 402) throw new Error("OpenAI quota exceeded. Check your billing.");
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content || "";
-  return parseAIResponse(text);
-}
-
-// ─── Gemini Integration ───────────────────────────────────────────────────────
-
-async function callGemini(apiKey, model, title, bodyText, bulletCount) {
-  const prompt = buildPrompt(title, bodyText, bulletCount);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 800,
-        responseMimeType: "application/json",
-      },
-      systemInstruction: {
-        parts: [
-          {
-            text: "You are a precise content summarizer. Always respond with valid JSON only. No markdown fences.",
-          },
-        ],
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    const msg =
-      errorBody?.error?.message || `Gemini error ${response.status}`;
-    if (response.status === 400 && msg.includes("API_KEY")) {
-      throw new Error("Invalid Gemini API key. Check your settings.");
-    }
-    if (response.status === 429) throw new Error("Gemini rate limit reached. Please wait a moment.");
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const text =
-    data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  return parseAIResponse(text);
-}
-
-// ─── Prompt Builder ───────────────────────────────────────────────────────────
-
-function buildPrompt(title, bodyText, bulletCount) {
-  const truncated = bodyText.slice(0, 8000);
-  return `You are summarizing a webpage for a user.
-
-Page title: "${title}"
-
-Page content:
-"""
-${truncated}
-"""
-
-Respond ONLY with a JSON object (no markdown, no code fences) in exactly this shape:
-{
-  "bullets": ["string", "string", ...],  // exactly ${bulletCount} concise bullet points summarizing the page
-  "insights": ["string", "string", "string"]  // exactly 3 key insights or takeaways
-}
-
-Rules:
-- bullets: ${bulletCount} items, each a single short sentence (max 20 words), in plain text
-- insights: exactly 3 items, each a pithy, non-obvious observation or takeaway
-- No markdown inside the strings (no **, no #, no -)
-- No extra keys in the JSON
-- If content is insufficient, do your best with what's available`;
-}
-
-// ─── Response Parser ──────────────────────────────────────────────────────────
-
-function parseAIResponse(text) {
-  // Strip any accidental markdown fences
-  const cleaned = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
-
-  let parsed;
+async function callProxy(title, bodyText, bulletCount) {
+  let response;
   try {
-    parsed = JSON.parse(cleaned);
+    response = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, bodyText, bulletCount }),
+    });
   } catch {
-    // Try to extract JSON object from the text
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI returned an unexpected response format. Please try again.");
-    parsed = JSON.parse(match[0]);
+    throw new Error("Could not reach the summarizer service. Check your internet connection.");
   }
 
-  const bullets = Array.isArray(parsed.bullets)
-    ? parsed.bullets.filter((b) => typeof b === "string" && b.trim())
-    : [];
-  const insights = Array.isArray(parsed.insights)
-    ? parsed.insights.filter((i) => typeof i === "string" && i.trim())
-    : [];
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const msg = data?.error || `Server error ${response.status}`;
+    if (response.status === 429) throw new Error("Rate limit reached. Please wait a moment and try again.");
+    if (response.status === 500) throw new Error("Summarizer service error. Please try again shortly.");
+    throw new Error(msg);
+  }
+
+  const bullets = Array.isArray(data.bullets) ? data.bullets.filter((b) => typeof b === "string" && b.trim()) : [];
+  const insights = Array.isArray(data.insights) ? data.insights.filter((i) => typeof i === "string" && i.trim()) : [];
 
   if (bullets.length === 0) {
     throw new Error("AI could not generate a summary for this page. The content may be too short or inaccessible.");
@@ -253,7 +127,6 @@ function parseAIResponse(text) {
 // ─── Cache Helpers ────────────────────────────────────────────────────────────
 
 function cacheKey(url) {
-  // Normalize URL (strip fragment)
   try {
     const u = new URL(url);
     u.hash = "";
@@ -269,7 +142,6 @@ async function getCachedSummary(url) {
   const entry = result[key];
   if (!entry) return null;
   if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
-    // Expired — delete silently
     await chrome.storage.local.remove(key);
     return null;
   }
@@ -284,21 +156,6 @@ async function setCachedSummary(url, data) {
 async function clearCacheForUrl(url) {
   const key = cacheKey(url);
   await chrome.storage.local.remove(key);
-}
-
-// ─── Settings Helpers ─────────────────────────────────────────────────────────
-
-async function getSettings() {
-  const result = await chrome.storage.sync.get([
-    "apiKey",
-    "provider",
-    "model",
-  ]);
-  return {
-    apiKey: result.apiKey || "",
-    provider: result.provider || "openai",
-    model: result.model || "",
-  };
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
