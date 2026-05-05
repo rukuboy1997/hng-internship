@@ -3,6 +3,8 @@
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_BODY_CHARS = 8000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1200;
 
 function buildPrompt(title, bodyText, bulletCount) {
   const truncated = bodyText.slice(0, MAX_BODY_CHARS);
@@ -59,6 +61,66 @@ function parseAIResponse(text) {
   return { bullets, insights };
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function callGemini(prompt) {
+  // v1 (not v1beta) — required for gemini-2.5-flash to work correctly
+  const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let geminiRes;
+    try {
+      geminiRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1024,
+          },
+          systemInstruction: {
+            parts: [
+              {
+                text: "You are a precise content summarizer. Always respond with valid JSON only. No markdown fences.",
+              },
+            ],
+          },
+        }),
+      });
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        throw new Error("Failed to reach Gemini API. Check your internet connection.");
+      }
+      await sleep(RETRY_DELAY_MS * (attempt + 1));
+      continue;
+    }
+
+    // Retry on 503 (model overloaded) and 429 (rate limit)
+    if ((geminiRes.status === 503 || geminiRes.status === 429) && attempt < MAX_RETRIES) {
+      await sleep(RETRY_DELAY_MS * (attempt + 1));
+      continue;
+    }
+
+    if (!geminiRes.ok) {
+      const errBody = await geminiRes.json().catch(() => ({}));
+      const msg = errBody?.error?.message || `Gemini error ${geminiRes.status}`;
+      if (geminiRes.status === 429) throw new Error("Rate limit reached. Please wait a moment and try again.");
+      if (geminiRes.status === 503) throw new Error("Gemini is temporarily overloaded. Please try again in a few seconds.");
+      if (geminiRes.status === 401 || geminiRes.status === 403) throw new Error("Gemini API authentication failed.");
+      throw new Error(msg);
+    }
+
+    const data = await geminiRes.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return text;
+  }
+
+  throw new Error("Gemini did not respond after multiple retries. Please try again.");
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -73,7 +135,7 @@ export default async function handler(req, res) {
   }
 
   if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: "Server not configured. GEMINI_API_KEY is missing." });
+    return res.status(500).json({ error: "Server not configured. GEMINI_API_KEY environment variable is missing." });
   }
 
   const { title, bodyText, bulletCount } = req.body || {};
@@ -85,48 +147,16 @@ export default async function handler(req, res) {
   const count = parseInt(bulletCount, 10) || 5;
   const prompt = buildPrompt(title || "Untitled", bodyText, count);
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
-  let geminiRes;
+  let rawText;
   try {
-    geminiRes = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 800,
-          responseMimeType: "application/json",
-        },
-        systemInstruction: {
-          parts: [
-            {
-              text: "You are a precise content summarizer. Always respond with valid JSON only. No markdown fences.",
-            },
-          ],
-        },
-      }),
-    });
+    rawText = await callGemini(prompt);
   } catch (err) {
-    return res.status(502).json({ error: "Failed to reach Gemini API." });
+    return res.status(502).json({ error: err.message });
   }
-
-  if (!geminiRes.ok) {
-    const errBody = await geminiRes.json().catch(() => ({}));
-    const msg = errBody?.error?.message || `Gemini error ${geminiRes.status}`;
-    if (geminiRes.status === 429) {
-      return res.status(429).json({ error: "Rate limit reached. Please wait a moment." });
-    }
-    return res.status(geminiRes.status).json({ error: msg });
-  }
-
-  const data = await geminiRes.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
   let summary;
   try {
-    summary = parseAIResponse(text);
+    summary = parseAIResponse(rawText);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
