@@ -8,7 +8,9 @@ const RETRY_DELAY_MS = 1200;
 
 function buildPrompt(title, bodyText, bulletCount) {
   const truncated = bodyText.slice(0, MAX_BODY_CHARS);
-  return `You are summarizing a webpage for a user.
+  return `You are a precise content summarizer. Always respond with valid JSON only. No markdown fences, no code blocks.
+
+Summarize the following webpage for a user.
 
 Page title: "${title}"
 
@@ -17,18 +19,18 @@ Page content:
 ${truncated}
 """
 
-Respond ONLY with a JSON object (no markdown, no code fences) in exactly this shape:
+Respond ONLY with a JSON object in exactly this shape (no extra text, no markdown):
 {
   "bullets": ["string", "string", ...],
   "insights": ["string", "string", "string"]
 }
 
 Rules:
-- bullets: ${bulletCount} items, each a single short sentence (max 20 words), in plain text
-- insights: exactly 3 items, each a pithy, non-obvious observation or takeaway
-- No markdown inside the strings (no **, no #, no -)
+- bullets: exactly ${bulletCount} items, each a single short sentence (max 20 words), plain text
+- insights: exactly 3 items, each a pithy non-obvious observation or takeaway
+- No markdown inside strings (no **, no #, no -)
 - No extra keys in the JSON
-- If content is insufficient, do your best with what's available`;
+- If content is insufficient, do your best with what is available`;
 }
 
 function parseAIResponse(text) {
@@ -66,7 +68,8 @@ function sleep(ms) {
 }
 
 async function callGemini(prompt) {
-  // v1 (not v1beta) — required for gemini-2.5-flash to work correctly
+  // Use v1 (not v1beta) — required for gemini-2.5-flash
+  // systemInstruction is NOT included — it is not supported on v1; instruction is embedded in the prompt instead
   const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -81,16 +84,9 @@ async function callGemini(prompt) {
             temperature: 0.3,
             maxOutputTokens: 1024,
           },
-          systemInstruction: {
-            parts: [
-              {
-                text: "You are a precise content summarizer. Always respond with valid JSON only. No markdown fences.",
-              },
-            ],
-          },
         }),
       });
-    } catch (err) {
+    } catch {
       if (attempt === MAX_RETRIES) {
         throw new Error("Failed to reach Gemini API. Check your internet connection.");
       }
@@ -98,7 +94,7 @@ async function callGemini(prompt) {
       continue;
     }
 
-    // Retry on 503 (model overloaded) and 429 (rate limit)
+    // Retry on 503 (model overloaded) or 429 (rate limit)
     if ((geminiRes.status === 503 || geminiRes.status === 429) && attempt < MAX_RETRIES) {
       await sleep(RETRY_DELAY_MS * (attempt + 1));
       continue;
@@ -109,7 +105,7 @@ async function callGemini(prompt) {
       const msg = errBody?.error?.message || `Gemini error ${geminiRes.status}`;
       if (geminiRes.status === 429) throw new Error("Rate limit reached. Please wait a moment and try again.");
       if (geminiRes.status === 503) throw new Error("Gemini is temporarily overloaded. Please try again in a few seconds.");
-      if (geminiRes.status === 401 || geminiRes.status === 403) throw new Error("Gemini API authentication failed.");
+      if (geminiRes.status === 401 || geminiRes.status === 403) throw new Error("Gemini API key is invalid or unauthorized.");
       throw new Error(msg);
     }
 
@@ -118,7 +114,7 @@ async function callGemini(prompt) {
     return text;
   }
 
-  throw new Error("Gemini did not respond after multiple retries. Please try again.");
+  throw new Error("Gemini did not respond after retries. Please try again.");
 }
 
 export default async function handler(req, res) {
